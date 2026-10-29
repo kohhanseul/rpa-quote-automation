@@ -1,0 +1,33 @@
+Excel.LaunchExcel.LaunchAndOpenUnderExistingProcess Path: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\data\\한빛상사_주문데이터.xlsx''' Visible: True ReadOnly: False UseMachineLocale: False Instance=> ExcelInstance
+Excel.SetActiveWorksheet.ActivateWorksheetByName Instance: ExcelInstance Name: $'''주문'''
+Excel.ReadFromExcel.ReadAllCells Instance: ExcelInstance GetCellContentsMode: Excel.GetCellContentsMode.TypedValues FirstLineIsHeader: True RangeValue=> ExcelData
+Excel.CloseExcel.Close Instance: ExcelInstance
+SET ValidCount TO 0
+SET ErrorList TO $'''%''%'''
+LOOP FOREACH CurrentItem IN ExcelData
+    IF CurrentItem['수량'] = 0 THEN
+        SET ErrorList TO $'''%ErrorList% %CurrentItem['주문번호']%'''
+        NEXT LOOP
+    END
+    IF IsEmpty(CurrentItem['거래처명']) THEN
+        SET ErrorList TO $'''%ErrorList% %CurrentItem['주문번호']%'''
+        NEXT LOOP
+    END
+    Variables.IncreaseVariable Value: ValidCount IncrementValue: 1
+    Text.ConvertDateTimeToText.FromCustomDateTime DateTime: CurrentItem['주문일'] CustomFormat: $'''yyyy-MM-dd''' Result=> DateText
+    Text.FromNumber Number: CurrentItem['금액'] DecimalPlaces: 0 UseThousandsSeparator: True FormattedNumber=> AmountText
+    Text.FromNumber Number: CurrentItem['단가'] DecimalPlaces: 0 UseThousandsSeparator: True FormattedNumber=> PriceText
+    Word.LaunchWord.LaunchAndOpen Path: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\template\\견적서_양식.docx''' Visible: False ReadOnly: False Instance=> WordInstance
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{주문번호}}''' TextToReplaceWith: CurrentItem['주문번호'] MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{주문일}}''' TextToReplaceWith: DateText MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{거래처명}}''' TextToReplaceWith: CurrentItem['거래처명'] MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{담당자명}}''' TextToReplaceWith: CurrentItem['담당자명'] MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{품목}}''' TextToReplaceWith: CurrentItem['품목'] MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{수량}}''' TextToReplaceWith: CurrentItem['수량'] MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{단가}}''' TextToReplaceWith: PriceText MatchCase: False MatchEntireWord: False
+    Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{금액}}''' TextToReplaceWith: AmountText MatchCase: False MatchEntireWord: False
+    Word.SaveWord.SaveAs Instance: WordInstance DocumentFormat: Word.WordFormat.PDF DocumentPath: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\output\\견적서_%CurrentItem['주문번호']%.pdf'''
+    Word.CloseWord.Close Instance: WordInstance
+    
+END
+Display.ShowMessageDialog.ShowMessage Title: $'''견적서 자동화 결과''' Message: $'''정상 %ValidCount%건 / 오류: %ErrorList%''' Icon: Display.Icon.None Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: False ButtonPressed=> ButtonPressed
