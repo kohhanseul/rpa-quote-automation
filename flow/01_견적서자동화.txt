@@ -1,9 +1,13 @@
+DateTime.GetCurrentDateTime.Local DateTimeFormat: DateTime.DateTimeFormat.DateAndTime CurrentDateTime=> StartTime
+Outlook.Launch Instance=> OutlookInstance
 Excel.LaunchExcel.LaunchAndOpenUnderExistingProcess Path: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\data\\한빛상사_주문데이터.xlsx''' Visible: True ReadOnly: False UseMachineLocale: False Instance=> ExcelInstance
 Excel.SetActiveWorksheet.ActivateWorksheetByName Instance: ExcelInstance Name: $'''주문'''
 Excel.ReadFromExcel.ReadAllCells Instance: ExcelInstance GetCellContentsMode: Excel.GetCellContentsMode.TypedValues FirstLineIsHeader: True RangeValue=> ExcelData
 Excel.CloseExcel.Close Instance: ExcelInstance
 SET ValidCount TO 0
 SET ErrorList TO $'''%''%'''
+SET MailFailList TO $'''%''%'''
+SET MailFailCount TO 0
 LOOP FOREACH CurrentItem IN ExcelData
     IF CurrentItem['수량'] = 0 THEN
         SET ErrorList TO $'''%ErrorList% %CurrentItem['주문번호']%'''
@@ -17,6 +21,7 @@ LOOP FOREACH CurrentItem IN ExcelData
     Text.ConvertDateTimeToText.FromCustomDateTime DateTime: CurrentItem['주문일'] CustomFormat: $'''yyyy-MM-dd''' Result=> DateText
     Text.FromNumber Number: CurrentItem['금액'] DecimalPlaces: 0 UseThousandsSeparator: True FormattedNumber=> AmountText
     Text.FromNumber Number: CurrentItem['단가'] DecimalPlaces: 0 UseThousandsSeparator: True FormattedNumber=> PriceText
+    SET PdfPath TO $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\output\\견적서_%CurrentItem['주문번호']%.pdf'''
     Word.LaunchWord.LaunchAndOpen Path: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\template\\견적서_양식.docx''' Visible: False ReadOnly: False Instance=> WordInstance
     Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{주문번호}}''' TextToReplaceWith: CurrentItem['주문번호'] MatchCase: False MatchEntireWord: False
     Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{주문일}}''' TextToReplaceWith: DateText MatchCase: False MatchEntireWord: False
@@ -26,8 +31,28 @@ LOOP FOREACH CurrentItem IN ExcelData
     Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{수량}}''' TextToReplaceWith: CurrentItem['수량'] MatchCase: False MatchEntireWord: False
     Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{단가}}''' TextToReplaceWith: PriceText MatchCase: False MatchEntireWord: False
     Word.FindAndReplaceWord.FindAndReplaceSingle Instance: WordInstance TextToFind: $'''{{금액}}''' TextToReplaceWith: AmountText MatchCase: False MatchEntireWord: False
-    Word.SaveWord.SaveAs Instance: WordInstance DocumentFormat: Word.WordFormat.PDF DocumentPath: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\output\\견적서_%CurrentItem['주문번호']%.pdf'''
+    Word.SaveWord.SaveAs Instance: WordInstance DocumentFormat: Word.WordFormat.PDF DocumentPath: PdfPath
     Word.CloseWord.Close Instance: WordInstance
-    
+    IF IsEmpty(CurrentItem['이메일']) THEN
+        SET MailFailList TO $'''%MailFailList% %CurrentItem['주문번호']%'''
+        Variables.IncreaseVariable Value: MailFailCount IncrementValue: 1
+        NEXT LOOP
+    END
+    Outlook.SendEmailThroughOutlook.SendEmail Instance: OutlookInstance Account: $'''userf9501@gmail.com''' SendTo: CurrentItem['이메일'] Subject: $'''[한빛상사] 견적서 송부 (%CurrentItem['주문번호']%)''' Body: $'''%CurrentItem['거래처명']% %CurrentItem['담당자명']% 님께
+
+요청하신 견적서를 첨부와 같이 송부드립니다.
+확인 부탁드립니다.
+
+한빛상사 드림
+(본 메일은 포트폴리오용 자동화 테스트 메일입니다)''' IsBodyHtml: False IsDraft: False Attachments: PdfPath
+    ON ERROR
+        SET MailFailList TO $'''%MailFailList% %CurrentItem['주문번호']%'''
+        SET MailFailCount TO MailFailCount + 1
+    END
 END
-Display.ShowMessageDialog.ShowMessage Title: $'''견적서 자동화 결과''' Message: $'''정상 %ValidCount%건 / 오류: %ErrorList%''' Icon: Display.Icon.None Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: False ButtonPressed=> ButtonPressed
+DateTime.GetCurrentDateTime.Local DateTimeFormat: DateTime.DateTimeFormat.DateAndTime CurrentDateTime=> EndTime
+Text.ConvertDateTimeToText.FromCustomDateTime DateTime: StartTime CustomFormat: $'''yyyy-MM-dd HH:mm:ss''' Result=> StartText
+Text.ConvertDateTimeToText.FromCustomDateTime DateTime: EndTime CustomFormat: $'''yyyy-MM-dd HH:mm:ss''' Result=> EndText
+SET SentCount TO ValidCount - MailFailCount
+File.WriteText File: $'''C:\\Users\\user\\OneDrive\\바탕 화면\\rpa-quote-automation\\logs\\실행로그.txt''' TextToWrite: $'''시작 %StartText% | 종료 %EndText% | PDF %ValidCount%건 | 발송 %SentCount%건 | 발송 실패 %MailFailCount%건(%MailFailList%) | 데이터 오류(%ErrorList%)''' AppendNewLine: True IfFileExists: File.IfFileExists.Append Encoding: File.FileEncoding.Unicode
+Display.ShowMessageDialog.ShowMessage Title: $'''견적서 자동화 결과''' Message: $'''정상 %ValidCount%건 / 데이터 오류: %ErrorList% / 메일 발송 실패: %MailFailList%''' Icon: Display.Icon.None Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: False ButtonPressed=> ButtonPressed

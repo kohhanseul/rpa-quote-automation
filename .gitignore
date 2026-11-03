@@ -3,6 +3,6 @@ data/한빛상사_주문데이터.xlsx
 
 # 실행할 때마다 생기는 결과물
 output/
-
+logs/
 # Office 임시 파일
 ~$*
